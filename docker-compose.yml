@@ -1,0 +1,21 @@
+version: '3'
+
+services:
+  web2:
+    build: .
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8001
+    volumes:
+      - .:/app
+    ports:
+      - 8001:8001
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.fastapi.rule=Host(`back.apiproc.site`)"
+      - "traefik.http.routers.fastapi.entrypoints=https"
+#      - "traefik.http.routers.fastapi.tls.certresolver=ls"
+
+networks:
+  default:
+    name: proxynet
+    external: true
+
