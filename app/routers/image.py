@@ -8,6 +8,7 @@ from fastapi import APIRouter, UploadFile, Depends, Form, HTTPException
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 from PIL import Image
+import PIL
 import io
 
 from app.orm import schemas
@@ -19,8 +20,8 @@ router = APIRouter()
 current_user = Annotated[schemas.User, Depends(get_current_user)]
 
 IMAGE_DIR = "app/files/"
-MAX_SIZE_MB = 0.2  # Максимальный размер файла в мегабайтах
-MAX_SIZE_BYTES = int(MAX_SIZE_MB * 1024 * 1024)  # Переводим в байты
+# MAX_SIZE_MB = 0.2  # Максимальный размер файла в мегабайтах
+# MAX_SIZE_BYTES = int(MAX_SIZE_MB * 1024 * 1024)  # Переводим в байты
 
 
 def resize_image_proportional(image: Image.Image, max_width: int, max_height: int) -> Image.Image:
@@ -30,7 +31,7 @@ def resize_image_proportional(image: Image.Image, max_width: int, max_height: in
     min_ratio = min(width_ratio, height_ratio)
     new_width = int(width * min_ratio)
     new_height = int(height * min_ratio)
-    return image.resize((new_width, new_height), Image.ANTIALIAS)
+    return image.resize((new_width, new_height), PIL.Image.LANCZOS)
 
 
 @router.post("/images/")
@@ -64,11 +65,11 @@ async def upload_images(
             resized_img.save(img_byte_arr, format=img.format, quality=95)
 
             # Сжимаем изображение до тех пор, пока его размер не станет меньше или равен 200 КБ
-            quality = 95
-            while img_byte_arr.tell() > MAX_SIZE_BYTES and quality > 10:
-                img_byte_arr = io.BytesIO()
-                resized_img.save(img_byte_arr, format=img.format, quality=quality)
-                quality -= 5
+            # quality = 95
+            # while img_byte_arr.tell() > MAX_SIZE_BYTES and quality > 10:
+            #     img_byte_arr = io.BytesIO()
+            #     resized_img.save(img_byte_arr, format=img.format, quality=quality)
+            #     quality -= 5
 
             img_byte_arr.seek(0)
             with open(image_on_disck, "wb") as f:
