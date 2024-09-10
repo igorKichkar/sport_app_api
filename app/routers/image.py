@@ -8,6 +8,7 @@ from typing import Annotated
 from fastapi import APIRouter, UploadFile, Depends, Form, HTTPException
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
+from PIL import Image  # Импортируем библиотеку Pillow
 
 from app.orm import schemas
 from app.dependencies import get_db, get_current_user
@@ -18,9 +19,11 @@ router = APIRouter()
 current_user = Annotated[schemas.User, Depends(get_current_user)]
 
 IMAGE_DIR = "app/files/"
+# Целевые размеры изображения
+TARGET_SIZE = (800, 600)
 
 
-@router.post("/images")
+@router.post("/images/")
 async def upload_images(
     images: list[UploadFile],
     item_id: Annotated[int, Form()],
@@ -41,8 +44,19 @@ async def upload_images(
                               for i in range(16)) + str(time.time_ns())
         image_on_disck = f"{IMAGE_DIR}image_{image_title}.{image_format}"
         image_indb = f"image_{image_title}.{image_format}"
-        with open(f"{image_on_disck}", "wb") as buffer:
-            shutil.copyfileobj(image.file, buffer)
+
+        # Открываем изображение через Pillow
+        with Image.open(image.file) as img:
+            width, height = img.size
+
+            # Если размеры изображения больше, чем целевые, меняем размер
+            if width > TARGET_SIZE[0] or height > TARGET_SIZE[1]:
+                img = img.resize(TARGET_SIZE)
+
+            # Сохраняем изображение на диск (с измененным или исходным размером)
+            img.save(image_on_disck)
+
+        # Сохраняем информацию об изображении в БД
         image_in_db = crud.create_image(db, schemas.ImageCreate(title=image_indb,
                                                                 item_id=item_id,
                                                                 owner_id=current_user.id,
