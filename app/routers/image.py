@@ -4,11 +4,11 @@ import time
 import shutil
 import datetime
 from typing import Annotated
-
 from fastapi import APIRouter, UploadFile, Depends, Form, HTTPException
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
-from PIL import Image  # Импортируем библиотеку Pillow
+from PIL import Image
+import io
 
 from app.orm import schemas
 from app.dependencies import get_db, get_current_user
@@ -19,8 +19,18 @@ router = APIRouter()
 current_user = Annotated[schemas.User, Depends(get_current_user)]
 
 IMAGE_DIR = "app/files/"
-# Целевые размеры изображения
-TARGET_SIZE = (800, 600)
+MAX_SIZE_MB = 0.2  # Максимальный размер файла в мегабайтах
+MAX_SIZE_BYTES = int(MAX_SIZE_MB * 1024 * 1024)  # Переводим в байты
+
+
+def resize_image_proportional(image: Image.Image, max_width: int, max_height: int) -> Image.Image:
+    width, height = image.size
+    width_ratio = max_width / width
+    height_ratio = max_height / height
+    min_ratio = min(width_ratio, height_ratio)
+    new_width = int(width * min_ratio)
+    new_height = int(height * min_ratio)
+    return image.resize((new_width, new_height), Image.ANTIALIAS)
 
 
 @router.post("/images/")
@@ -30,7 +40,6 @@ async def upload_images(
     current_user: current_user,
     db: Session = Depends(get_db)
 ):
-    # get_item проверяет и владельца
     item_parrent = crud.get_item(db, item_id, current_user.id)
 
     if item_parrent is None:
@@ -47,14 +56,23 @@ async def upload_images(
 
         # Открываем изображение через Pillow
         with Image.open(image.file) as img:
-            width, height = img.size
+            # Изменяем размер изображения пропорционально
+            resized_img = resize_image_proportional(img, 800, 600)
 
-            # Если размеры изображения больше, чем целевые, меняем размер
-            if width > TARGET_SIZE[0] or height > TARGET_SIZE[1]:
-                img = img.resize(TARGET_SIZE)
+            # Сохраняем изображение на диск (с измененным размером)
+            img_byte_arr = io.BytesIO()
+            resized_img.save(img_byte_arr, format=img.format, quality=95)
 
-            # Сохраняем изображение на диск (с измененным или исходным размером)
-            img.save(image_on_disck)
+            # Сжимаем изображение до тех пор, пока его размер не станет меньше или равен 200 КБ
+            quality = 95
+            while img_byte_arr.tell() > MAX_SIZE_BYTES and quality > 10:
+                img_byte_arr = io.BytesIO()
+                resized_img.save(img_byte_arr, format=img.format, quality=quality)
+                quality -= 5
+
+            img_byte_arr.seek(0)
+            with open(image_on_disck, "wb") as f:
+                f.write(img_byte_arr.read())
 
         # Сохраняем информацию об изображении в БД
         image_in_db = crud.create_image(db, schemas.ImageCreate(title=image_indb,
